@@ -1,0 +1,7 @@
+{
+	"InstallScripts" : 
+	[
+		"/home/raulb/bastion-browser/build/cmake_install.cmake"
+	],
+	"Parallel" : false
+}
