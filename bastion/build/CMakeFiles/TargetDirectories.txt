@@ -1,7 +1,0 @@
-/home/raulb/Downloads/phantom-vista2/build/CMakeFiles/phantom.dir
-/home/raulb/Downloads/phantom-vista2/build/CMakeFiles/edit_cache.dir
-/home/raulb/Downloads/phantom-vista2/build/CMakeFiles/rebuild_cache.dir
-/home/raulb/Downloads/phantom-vista2/build/CMakeFiles/list_install_components.dir
-/home/raulb/Downloads/phantom-vista2/build/CMakeFiles/install.dir
-/home/raulb/Downloads/phantom-vista2/build/CMakeFiles/install/local.dir
-/home/raulb/Downloads/phantom-vista2/build/CMakeFiles/install/strip.dir
