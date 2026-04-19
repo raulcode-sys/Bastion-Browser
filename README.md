@@ -156,11 +156,12 @@ The only thing with this one is, it's not universal like Raiser Browser, Raiser 
 Images of how it looks + logo:
 
 <img width="1024" height="1024" alt="2026_04_17_10n_Kleki" src="https://github.com/user-attachments/assets/4e9e64d5-f969-4c30-a5fe-de8aa2c124d1" />
-<img width="1286" height="925" alt="Screenshot_2026-04-18_12-09-41" src="https://github.com/user-attachments/assets/c4c28fc4-c512-4e6d-be75-0125edcab8c7" />
-<img width="1288" height="936" alt="Screenshot_2026-04-18_12-09-10" src="https://github.com/user-attachments/assets/63b81830-829c-4300-b10b-c0f22b9647ec" />
-<img width="1292" height="930" alt="Screenshot_2026-04-18_12-07-41" src="https://github.com/user-attachments/assets/094f4ad7-00e8-4680-9cd1-18144285c174" />
-<img width="1286" height="928" alt="Screenshot_2026-04-18_12-07-24" src="https://github.com/user-attachments/assets/8068a473-ea49-4399-8785-5a71990ac6f4" />
-<img width="1287" height="929" alt="Screenshot_2026-04-18_12-10-21" src="https://github.com/user-attachments/assets/4e4d544d-ccf6-4b2e-b05f-087e1b43defe" />
-<img width="1276" height="925" alt="Screenshot_2026-04-18_12-08-03" src="https://github.com/user-attachments/assets/b13861d4-1f5f-414f-8dff-a9e1de49476c" />
+<img width="1291" height="918" alt="ss5" src="https://github.com/user-attachments/assets/ee6c0de4-ddc8-4dfb-905c-e1164f2c79ef" />
+<img width="1288" height="934" alt="ss1" src="https://github.com/user-attachments/assets/004165c0-40b8-4cae-ad4f-2c258906f552" />
+<img width="1287" height="938" alt="ss4" src="https://github.com/user-attachments/assets/a0257888-abe8-43e8-bbec-8ccf98c46cc3" />
+<img width="1292" height="931" alt="ss3" src="https://github.com/user-attachments/assets/bbd1a36d-9f8e-42a6-8c08-d46a4df34b7f" />
+<img width="1274" height="931" alt="ss2" src="https://github.com/user-attachments/assets/33af7ff8-9a95-46e1-b9a1-63101e1365ac" />
+
+
 
 also yeah it was inspired by minecraft
