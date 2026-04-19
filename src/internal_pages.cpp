@@ -176,6 +176,28 @@ std::string home(const AppState& s) {
         o << "</div></div>";
     }
 
+    // Reopen last session — only shown if we have saved tabs
+    if (!s.last_session_tabs.empty()) {
+        o << "<div class=\"quick\" style=\"margin-top:24px\">"
+          << "<h2>Last Session</h2><div class=\"card\">"
+          << "<div class=\"row\"><div>"
+          << "<strong>" << s.last_session_tabs.size()
+          << " tab" << (s.last_session_tabs.size() == 1 ? "" : "s")
+          << " from your last session</strong>"
+          << "<div class=\"dim\" style=\"font-size:11px;margin-top:4px\">";
+        size_t shown = 0;
+        for (const auto& u : s.last_session_tabs) {
+            if (shown++ >= 3) { o << "…"; break; }
+            if (shown > 1) o << " · ";
+            o << esc(u.substr(0, 40));
+        }
+        o << "</div></div>"
+          << "<div style=\"display:flex;gap:8px\">"
+          << "<a class=\"btn\" href=\"bastion://act?a=restore_session\">Reopen all</a>"
+          << "<a class=\"btn btn-ghost\" href=\"bastion://act?a=clear_session\">Discard</a>"
+          << "</div></div></div></div>";
+    }
+
     o << "<div style=\"text-align:center;margin-top:40px\">"
       << nav_bar("home")
       << "</div>";
@@ -252,6 +274,54 @@ std::string settings(const AppState& s) {
          "<div class=\"dim\">Bastion uses an ephemeral session — nothing is written to disk.</div></div>"
          "<div class=\"dim\" style=\"color:#5cffa0\">✓ Ephemeral</div></div>"
       << "</div>";
+
+    // Tab behavior
+    o << "<h2>Tabs</h2><div class=\"card\">"
+      << "<div class=\"row\"><div><strong>New tab position</strong>"
+         "<div class=\"dim\">Where new tabs open when you click + or Ctrl+T</div></div>"
+      << "<a class=\"btn\" href=\"bastion://act?a=tab_pos&v=0\">"
+      << (s.new_tab_pos == NewTabPos::AFTER_CURRENT ? "✓ " : "")
+      << "After current</a>"
+      << "<a class=\"btn\" style=\"margin-left:4px\" href=\"bastion://act?a=tab_pos&v=1\">"
+      << (s.new_tab_pos == NewTabPos::AT_END ? "✓ " : "")
+      << "At end</a>"
+      << "</div></div>";
+
+    // Search shortcuts
+    o << "<h2>Search Shortcuts</h2><div class=\"card\">"
+      << "<p class=\"dim\" style=\"margin-bottom:12px\">"
+         "Type <code>keyword query</code> in the address bar to search. "
+         "Edit in <code>~/.config/bastion/state.txt</code>.</p>";
+    for (const auto& sc : s.shortcuts) {
+        o << "<div class=\"row\">"
+          << "<div><strong><code>" << esc(sc.keyword) << "</code> " << esc(sc.name) << "</strong>"
+          << "<div class=\"dim\" style=\"font-size:11px;overflow:hidden;text-overflow:ellipsis;"
+             "white-space:nowrap\">" << esc(sc.template_) << "</div></div>"
+          << "<a class=\"btn btn-ghost\" href=\"bastion://act?a=rm_shortcut&k="
+          << esc(sc.keyword) << "\">Remove</a>"
+          << "</div>";
+    }
+    o << "</div>";
+
+    // Per-site rules
+    if (!s.site_rules.empty()) {
+        o << "<h2>Site Rules</h2><div class=\"card\">";
+        for (const auto& [host, sr] : s.site_rules) {
+            o << "<div class=\"row\">"
+              << "<div><strong>" << esc(host) << "</strong>"
+              << "<div class=\"dim\" style=\"font-size:11px\">";
+            std::string flags;
+            if (sr.js_disabled)  flags += "JS blocked · ";
+            if (sr.force_dark)   flags += "force dark · ";
+            if (sr.block_images) flags += "images blocked · ";
+            if (flags.size() > 3) flags.erase(flags.size() - 3);
+            o << flags << "</div></div>"
+              << "<a class=\"btn btn-danger\" href=\"bastion://act?a=rm_site&h=" << esc(host)
+              << "\">Remove</a>"
+              << "</div>";
+        }
+        o << "</div>";
+    }
 
     // About
     o << "<h2>About</h2><div class=\"card\">"

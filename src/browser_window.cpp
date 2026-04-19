@@ -54,6 +54,9 @@ void BrowserWindow::build_ui(GtkApplication* app) {
     // Keyboard shortcuts
     g_signal_connect(window_, "key-press-event",
                      G_CALLBACK(on_key_press), this);
+    // Save session on close
+    g_signal_connect(window_, "delete-event",
+                     G_CALLBACK(on_window_delete), this);
 
     main_box_ = gtk_box_new(GTK_ORIENTATION_VERTICAL, 0);
     gtk_container_add(GTK_CONTAINER(window_), main_box_);
@@ -120,6 +123,21 @@ void BrowserWindow::build_toolbar() {
     g_signal_connect(btn_bookmark_, "clicked",
                      G_CALLBACK(on_bookmark_clicked), this);
     gtk_box_pack_start(GTK_BOX(toolbar_), btn_bookmark_, FALSE, FALSE, 0);
+
+    // Reader mode
+    btn_reader_ = gtk_button_new_with_label("📖");
+    gtk_widget_set_tooltip_text(btn_reader_, "Reader mode (Ctrl+R)");
+    g_signal_connect(btn_reader_, "clicked",
+                     G_CALLBACK(on_reader_clicked), this);
+    gtk_box_pack_start(GTK_BOX(toolbar_), btn_reader_, FALSE, FALSE, 0);
+
+    // Fortress mode — the nuclear privacy toggle
+    btn_fortress_ = gtk_button_new_with_label("🛡");
+    gtk_widget_set_tooltip_text(btn_fortress_,
+        "Fortress mode: disable JS, images, media on this site (Ctrl+Shift+F)");
+    g_signal_connect(btn_fortress_, "clicked",
+                     G_CALLBACK(on_fortress_clicked), this);
+    gtk_box_pack_start(GTK_BOX(toolbar_), btn_fortress_, FALSE, FALSE, 0);
 
     // Downloads button
     btn_downloads_ = gtk_button_new_with_label("⬇");
@@ -359,6 +377,33 @@ void BrowserWindow::handle_bastion_action(WebKitURISchemeRequest* req,
     } else if (action == "clear_downloads") {
         downloads_->clear_completed();
         redirect_to = "bastion://downloads";
+
+    } else if (action == "restore_session") {
+        restore_last_session();
+        redirect_to = "bastion://home";
+
+    } else if (action == "clear_session") {
+        state_->set_last_session({});
+        redirect_to = "bastion://home";
+
+    } else if (action == "tab_pos") {
+        try { state_->new_tab_pos = static_cast<NewTabPos>(std::stoi(value)); } catch (...) {}
+        state_->save();
+        redirect_to = "bastion://settings";
+
+    } else if (action == "rm_shortcut") {
+        std::string k = url_decode(get_param(query, "k"));
+        state_->shortcuts.erase(
+            std::remove_if(state_->shortcuts.begin(), state_->shortcuts.end(),
+                [&](const SearchShortcut& sc){ return sc.keyword == k; }),
+            state_->shortcuts.end());
+        state_->save();
+        redirect_to = "bastion://settings";
+
+    } else if (action == "rm_site") {
+        std::string h = url_decode(get_param(query, "h"));
+        state_->clear_site(h);
+        redirect_to = "bastion://settings";
     }
 
     // Issue a meta-refresh redirect
@@ -393,8 +438,14 @@ Tab BrowserWindow::create_tab(const std::string& uri) {
     g_signal_connect(tab.webview, "load-failed-with-tls-errors", G_CALLBACK(on_tls_error),                this);
     g_signal_connect(tab.webview, "notify::estimated-load-progress",
                      G_CALLBACK(on_notify_estimated_progress), this);
+    // Right-click page context menu
+    g_signal_connect(tab.webview, "context-menu",
+                     G_CALLBACK(on_context_menu), this);
 
-    tab.label_box  = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 4);
+    tab.label_box  = gtk_event_box_new(); // event box so we get button events
+    GtkWidget* inner = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 4);
+    gtk_container_add(GTK_CONTAINER(tab.label_box), inner);
+
     tab.label_text = gtk_label_new("New Tab");
     gtk_label_set_max_width_chars(GTK_LABEL(tab.label_text), 20);
     gtk_label_set_ellipsize(GTK_LABEL(tab.label_text), PANGO_ELLIPSIZE_END);
@@ -406,8 +457,15 @@ Tab BrowserWindow::create_tab(const std::string& uri) {
     g_object_set_data(G_OBJECT(close_btn), "webview", tab.webview);
     g_signal_connect(close_btn, "clicked", G_CALLBACK(on_close_tab_clicked), this);
 
-    gtk_box_pack_start(GTK_BOX(tab.label_box), tab.label_text, TRUE, TRUE, 0);
-    gtk_box_pack_start(GTK_BOX(tab.label_box), close_btn, FALSE, FALSE, 0);
+    gtk_box_pack_start(GTK_BOX(inner), tab.label_text, TRUE, TRUE, 0);
+    gtk_box_pack_start(GTK_BOX(inner), close_btn, FALSE, FALSE, 0);
+
+    // Right-click on the tab label triggers tab context menu
+    g_object_set_data(G_OBJECT(tab.label_box), "webview", tab.webview);
+    gtk_widget_add_events(tab.label_box, GDK_BUTTON_PRESS_MASK);
+    g_signal_connect(tab.label_box, "button-press-event",
+                     G_CALLBACK(on_tab_button_press), this);
+
     gtk_widget_show_all(tab.label_box);
 
     tab.uri = uri;
@@ -420,8 +478,16 @@ void BrowserWindow::open_tab(const std::string& uri) {
     gtk_widget_set_vexpand(webview_widget, TRUE);
     gtk_widget_set_hexpand(webview_widget, TRUE);
 
-    int page_num = gtk_notebook_append_page(
-        GTK_NOTEBOOK(notebook_), webview_widget, tab.label_box);
+    int page_num;
+    if (state_->new_tab_pos == NewTabPos::AFTER_CURRENT) {
+        int cur = gtk_notebook_get_current_page(GTK_NOTEBOOK(notebook_));
+        int insert_pos = (cur < 0) ? 0 : cur + 1;
+        page_num = gtk_notebook_insert_page(
+            GTK_NOTEBOOK(notebook_), webview_widget, tab.label_box, insert_pos);
+    } else {
+        page_num = gtk_notebook_append_page(
+            GTK_NOTEBOOK(notebook_), webview_widget, tab.label_box);
+    }
     gtk_widget_show_all(webview_widget);
     tabs_.push_back(tab);
 
@@ -438,7 +504,11 @@ void BrowserWindow::close_tab(int page_num) {
     }
     GtkWidget* page = gtk_notebook_get_nth_page(GTK_NOTEBOOK(notebook_), page_num);
     for (auto it = tabs_.begin(); it != tabs_.end(); ++it) {
-        if (GTK_WIDGET(it->webview) == page) { tabs_.erase(it); break; }
+        if (GTK_WIDGET(it->webview) == page) {
+            if (it->pinned) return;  // can't close pinned tabs; unpin first
+            tabs_.erase(it);
+            break;
+        }
     }
     gtk_notebook_remove_page(GTK_NOTEBOOK(notebook_), page_num);
 }
@@ -654,6 +724,381 @@ void BrowserWindow::toggle_bookmark_current() {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+//  Reader mode
+//  Inject a minimal Readability-style script that:
+//    1. finds the main content (biggest <article> / <main> / biggest <div> with
+//       lots of <p>s)
+//    2. replaces the page body with a clean, centered version
+//  Runs via webkit_web_view_run_javascript.
+// ─────────────────────────────────────────────────────────────────────────────
+static const char* READER_SCRIPT = R"JS(
+(function() {
+    if (window.__bastion_reader_active) {
+        // Restore: reload gets us back
+        location.reload();
+        return;
+    }
+    window.__bastion_reader_active = true;
+
+    // Score each element by "readable text density"
+    function score(el) {
+        const ps = el.querySelectorAll('p');
+        if (ps.length < 3) return 0;
+        let total = 0;
+        ps.forEach(p => total += (p.innerText || '').length);
+        return total;
+    }
+
+    // Candidates: article, main, or div with most text
+    let best = null, bestScore = 0;
+    const candidates = document.querySelectorAll('article, main, [role=main], div, section');
+    candidates.forEach(c => {
+        const s = score(c);
+        if (s > bestScore) { bestScore = s; best = c; }
+    });
+
+    if (!best || bestScore < 200) {
+        alert('Bastion Reader: could not find main content.');
+        window.__bastion_reader_active = false;
+        return;
+    }
+
+    const title = document.title || '';
+    const contentHTML = best.innerHTML;
+
+    // Build clean page
+    const isDark = matchMedia('(prefers-color-scheme: dark)').matches;
+    const bg = isDark ? '#1a1a20' : '#fafaf8';
+    const fg = isDark ? '#e8e8ea' : '#1a1a1f';
+    const dim = isDark ? '#888' : '#666';
+    const accent = isDark ? '#7aa2ff' : '#3d6bd3';
+
+    document.documentElement.innerHTML = `
+        <head>
+            <meta charset="utf-8">
+            <title>${title}</title>
+            <style>
+                * { box-sizing: border-box; }
+                body {
+                    background: ${bg};
+                    color: ${fg};
+                    font-family: Georgia, "Palatino Linotype", serif;
+                    font-size: 18px;
+                    line-height: 1.7;
+                    max-width: 720px;
+                    margin: 48px auto;
+                    padding: 0 24px;
+                }
+                h1, h2, h3, h4 { font-family: "Inter", "Segoe UI", sans-serif; line-height: 1.3; margin-top: 1.6em; }
+                h1 { font-size: 2em; border-bottom: 2px solid ${accent}; padding-bottom: 0.3em; }
+                p { margin: 1em 0; }
+                a { color: ${accent}; text-decoration: underline; text-underline-offset: 3px; }
+                img, video { max-width: 100%; height: auto; border-radius: 6px; }
+                blockquote {
+                    border-left: 3px solid ${accent};
+                    padding-left: 16px;
+                    margin-left: 0;
+                    color: ${dim};
+                    font-style: italic;
+                }
+                pre, code {
+                    background: ${isDark ? '#0f0f14' : '#f0f0ee'};
+                    padding: 2px 6px;
+                    border-radius: 3px;
+                    font-family: "JetBrains Mono", "Menlo", monospace;
+                    font-size: 0.9em;
+                }
+                pre { padding: 12px; overflow-x: auto; }
+                .bastion-header {
+                    font-family: "Inter", sans-serif;
+                    color: ${dim};
+                    font-size: 11px;
+                    text-transform: uppercase;
+                    letter-spacing: 2px;
+                    padding-bottom: 8px;
+                    border-bottom: 1px solid ${dim};
+                    margin-bottom: 32px;
+                }
+            </style>
+        </head>
+        <body>
+            <div class="bastion-header">📖 Bastion Reader · Click Reader button again to exit</div>
+            <h1>${title}</h1>
+            <div>${contentHTML}</div>
+        </body>
+    `;
+})();
+)JS";
+
+void BrowserWindow::toggle_reader_mode(WebKitWebView* wv) {
+    if (!wv) return;
+    webkit_web_view_evaluate_javascript(wv, READER_SCRIPT, -1, nullptr, nullptr, nullptr, nullptr, nullptr);
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  Fortress mode
+//  When ON: all tabs get JS, media, and images disabled.
+//  When OFF: normal settings.
+// ─────────────────────────────────────────────────────────────────────────────
+void BrowserWindow::toggle_fortress() {
+    state_->fortress_mode = !state_->fortress_mode;
+
+    for (auto& t : tabs_) {
+        WebKitSettings* s = webkit_web_view_get_settings(t.webview);
+        if (state_->fortress_mode) {
+            webkit_settings_set_enable_javascript(s, FALSE);
+            webkit_settings_set_auto_load_images(s, FALSE);
+            webkit_settings_set_enable_media(s, FALSE);
+            webkit_settings_set_enable_webgl(s, FALSE);
+        } else {
+            webkit_settings_set_enable_javascript(s, TRUE);
+            webkit_settings_set_auto_load_images(s, TRUE);
+            webkit_settings_set_enable_media(s, TRUE);
+            webkit_settings_set_enable_webgl(s, TRUE);
+        }
+    }
+
+    // Update button appearance
+    gtk_button_set_label(GTK_BUTTON(btn_fortress_),
+        state_->fortress_mode ? "🛡 ON" : "🛡");
+
+    // Reload current tab to apply
+    Tab* t = current_tab();
+    if (t) webkit_web_view_reload(t->webview);
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  Picture-in-Picture
+//  Calls video.requestPictureInPicture() on the largest playing video.
+// ─────────────────────────────────────────────────────────────────────────────
+static const char* PIP_SCRIPT = R"JS(
+(function() {
+    const videos = Array.from(document.querySelectorAll('video'));
+    if (!videos.length) { alert('No video found on this page.'); return; }
+    // Biggest visible video
+    let target = videos[0], bestArea = 0;
+    videos.forEach(v => {
+        const r = v.getBoundingClientRect();
+        const a = r.width * r.height;
+        if (a > bestArea) { bestArea = a; target = v; }
+    });
+    if (document.pictureInPictureElement) {
+        document.exitPictureInPicture().catch(() => {});
+    } else if (target.requestPictureInPicture) {
+        target.requestPictureInPicture().catch(e =>
+            alert('Could not enter picture-in-picture: ' + e.message));
+    } else {
+        alert('Picture-in-picture not supported for this video.');
+    }
+})();
+)JS";
+
+void BrowserWindow::request_pip(WebKitWebView* wv) {
+    if (!wv) return;
+    webkit_web_view_evaluate_javascript(wv, PIP_SCRIPT, -1, nullptr, nullptr, nullptr, nullptr, nullptr);
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  View source / Inspector
+// ─────────────────────────────────────────────────────────────────────────────
+void BrowserWindow::view_source() {
+    Tab* t = current_tab(); if (!t) return;
+    const gchar* u = webkit_web_view_get_uri(t->webview);
+    if (!u) return;
+    std::string url = u;
+    if (url.rfind("view-source:", 0) == 0) return;
+    // Use WebKit's built-in view-source: scheme
+    std::string vs = "view-source:" + url;
+    open_tab(vs);
+}
+
+void BrowserWindow::open_inspector() {
+    Tab* t = current_tab(); if (!t) return;
+    WebKitSettings* s = webkit_web_view_get_settings(t->webview);
+    webkit_settings_set_enable_developer_extras(s, TRUE);
+    WebKitWebInspector* insp = webkit_web_view_get_inspector(t->webview);
+    if (insp) webkit_web_inspector_show(insp);
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  Per-site settings application
+// ─────────────────────────────────────────────────────────────────────────────
+static const char* FORCE_DARK_SCRIPT = R"JS(
+(function() {
+    if (window.__bastion_dark) return;
+    window.__bastion_dark = true;
+    const s = document.createElement('style');
+    s.textContent = `
+        html { filter: invert(0.92) hue-rotate(180deg); background: #fff; }
+        img, video, picture, iframe, [style*="background-image"] {
+            filter: invert(1) hue-rotate(180deg);
+        }
+    `;
+    (document.head || document.documentElement).appendChild(s);
+})();
+)JS";
+
+void BrowserWindow::apply_site_settings(WebKitWebView* wv, const std::string& uri) {
+    if (!wv) return;
+    std::string host = AppState::host_of(uri);
+    if (host.empty()) return;
+
+    // If fortress mode active, per-site is overridden (fortress wins)
+    if (state_->fortress_mode) return;
+
+    SiteSettings s = state_->get_site(host);
+    WebKitSettings* ws = webkit_web_view_get_settings(wv);
+
+    webkit_settings_set_enable_javascript(ws, s.js_disabled ? FALSE : TRUE);
+    webkit_settings_set_auto_load_images(ws, s.block_images ? FALSE : TRUE);
+
+    if (s.force_dark) {
+        webkit_web_view_evaluate_javascript(wv, FORCE_DARK_SCRIPT, -1, nullptr, nullptr, nullptr, nullptr, nullptr);
+    }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  Session save/restore
+// ─────────────────────────────────────────────────────────────────────────────
+void BrowserWindow::save_session() {
+    std::vector<std::string> urls;
+    for (const auto& t : tabs_) {
+        const gchar* u = webkit_web_view_get_uri(t.webview);
+        if (u) {
+            std::string url = u;
+            if (url.rfind("bastion://", 0) != 0 && url != "about:blank")
+                urls.push_back(url);
+        }
+    }
+    state_->set_last_session(urls);
+}
+
+void BrowserWindow::restore_last_session() {
+    // Copy because opening tabs may mutate state via add_history (which we don't have, but safe)
+    auto urls = state_->last_session_tabs;
+    for (const auto& u : urls) open_tab(u);
+    // Clear so we don't restore twice
+    state_->set_last_session({});
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  Tab operations: duplicate, pin, close_others/right/left
+// ─────────────────────────────────────────────────────────────────────────────
+void BrowserWindow::duplicate_tab(int page_num) {
+    GtkWidget* page = gtk_notebook_get_nth_page(GTK_NOTEBOOK(notebook_), page_num);
+    if (!page) return;
+    for (const auto& t : tabs_) {
+        if (GTK_WIDGET(t.webview) == page) {
+            const gchar* u = webkit_web_view_get_uri(t.webview);
+            open_tab(u ? u : DEFAULT_HOME);
+            return;
+        }
+    }
+}
+
+void BrowserWindow::toggle_pin(int page_num) {
+    GtkWidget* page = gtk_notebook_get_nth_page(GTK_NOTEBOOK(notebook_), page_num);
+    if (!page) return;
+    for (auto& t : tabs_) {
+        if (GTK_WIDGET(t.webview) == page) {
+            t.pinned = !t.pinned;
+            // Move pinned tabs to front
+            if (t.pinned) {
+                gtk_notebook_reorder_child(GTK_NOTEBOOK(notebook_), page, 0);
+            }
+            // Update label: prefix with 📌 when pinned
+            const gchar* current = gtk_label_get_text(GTK_LABEL(t.label_text));
+            std::string s = current ? current : "";
+            if (t.pinned) {
+                if (s.rfind("📌 ", 0) != 0) s = "📌 " + s;
+            } else {
+                if (s.rfind("📌 ", 0) == 0) s = s.substr(sizeof("📌 ") - 1);
+            }
+            gtk_label_set_text(GTK_LABEL(t.label_text), s.c_str());
+            return;
+        }
+    }
+}
+
+void BrowserWindow::close_others(int page_num) {
+    // Iterate backwards to avoid index shifts
+    int n = gtk_notebook_get_n_pages(GTK_NOTEBOOK(notebook_));
+    for (int i = n - 1; i >= 0; i--) {
+        if (i == page_num) continue;
+        close_tab(i);
+        if (i < page_num) page_num--;
+    }
+}
+
+void BrowserWindow::close_right(int page_num) {
+    int n = gtk_notebook_get_n_pages(GTK_NOTEBOOK(notebook_));
+    for (int i = n - 1; i > page_num; i--) {
+        close_tab(i);
+    }
+}
+
+void BrowserWindow::close_left(int page_num) {
+    for (int i = page_num - 1; i >= 0; i--) {
+        close_tab(i);
+    }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  Tab right-click menu
+// ─────────────────────────────────────────────────────────────────────────────
+void BrowserWindow::show_tab_menu(GtkWidget* /*trigger*/, int page_num, GdkEventButton* event) {
+    GtkWidget* menu = gtk_menu_new();
+
+    // Find the tab for pin/unpin label
+    bool pinned = false;
+    GtkWidget* page = gtk_notebook_get_nth_page(GTK_NOTEBOOK(notebook_), page_num);
+    for (const auto& t : tabs_) {
+        if (GTK_WIDGET(t.webview) == page) { pinned = t.pinned; break; }
+    }
+
+    struct Action {
+        const char* label;
+        void (*fn)(BrowserWindow*, int);
+    };
+
+    Action actions[] = {
+        {"Duplicate",          [](BrowserWindow* b, int p){ b->duplicate_tab(p); }},
+        {pinned ? "Unpin" : "Pin", [](BrowserWindow* b, int p){ b->toggle_pin(p); }},
+        {nullptr, nullptr},  // separator
+        {"Close",              [](BrowserWindow* b, int p){ b->close_tab(p); }},
+        {"Close others",       [](BrowserWindow* b, int p){ b->close_others(p); }},
+        {"Close tabs to right",[](BrowserWindow* b, int p){ b->close_right(p); }},
+        {"Close tabs to left", [](BrowserWindow* b, int p){ b->close_left(p); }},
+    };
+
+    for (auto& a : actions) {
+        if (!a.label) {
+            gtk_menu_shell_append(GTK_MENU_SHELL(menu), gtk_separator_menu_item_new());
+            continue;
+        }
+        GtkWidget* item = gtk_menu_item_new_with_label(a.label);
+        // Store page_num + fn pointer on the item
+        g_object_set_data(G_OBJECT(item), "bw",   this);
+        g_object_set_data(G_OBJECT(item), "page", GINT_TO_POINTER(page_num));
+        g_object_set_data(G_OBJECT(item), "fn",   reinterpret_cast<gpointer>(a.fn));
+
+        g_signal_connect(item, "activate",
+            G_CALLBACK(+[](GtkMenuItem* mi, gpointer){
+                auto* bw = static_cast<BrowserWindow*>(
+                    g_object_get_data(G_OBJECT(mi), "bw"));
+                int page = GPOINTER_TO_INT(g_object_get_data(G_OBJECT(mi), "page"));
+                auto fn = reinterpret_cast<void(*)(BrowserWindow*, int)>(
+                    g_object_get_data(G_OBJECT(mi), "fn"));
+                if (bw && fn) fn(bw, page);
+            }), nullptr);
+        gtk_menu_shell_append(GTK_MENU_SHELL(menu), item);
+    }
+
+    gtk_widget_show_all(menu);
+    gtk_menu_popup_at_pointer(GTK_MENU(menu), reinterpret_cast<GdkEvent*>(event));
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 //  GTK callbacks
 // ─────────────────────────────────────────────────────────────────────────────
 void BrowserWindow::on_go_clicked(GtkWidget*, gpointer self) {
@@ -699,6 +1144,38 @@ void BrowserWindow::on_bookmark_clicked(GtkWidget*, gpointer self) {
     static_cast<BrowserWindow*>(self)->toggle_bookmark_current();
 }
 
+void BrowserWindow::on_reader_clicked(GtkWidget*, gpointer self) {
+    auto* bw = static_cast<BrowserWindow*>(self);
+    Tab* t = bw->current_tab();
+    if (t) bw->toggle_reader_mode(t->webview);
+}
+
+void BrowserWindow::on_fortress_clicked(GtkWidget*, gpointer self) {
+    static_cast<BrowserWindow*>(self)->toggle_fortress();
+}
+
+gboolean BrowserWindow::on_tab_button_press(GtkWidget* label_box, GdkEventButton* ev, gpointer self) {
+    auto* bw = static_cast<BrowserWindow*>(self);
+    if (ev->type != GDK_BUTTON_PRESS) return FALSE;
+
+    // Find which tab this label_box belongs to
+    WebKitWebView* wv = WEBKIT_WEB_VIEW(g_object_get_data(G_OBJECT(label_box), "webview"));
+    int idx = bw->tab_index_of(wv);
+    if (idx < 0) return FALSE;
+
+    // Middle click = close
+    if (ev->button == 2) {
+        bw->close_tab(idx);
+        return TRUE;
+    }
+    // Right click = context menu
+    if (ev->button == 3) {
+        bw->show_tab_menu(label_box, idx, ev);
+        return TRUE;
+    }
+    return FALSE;
+}
+
 void BrowserWindow::on_downloads_clicked(GtkWidget*, gpointer self) {
     auto* bw = static_cast<BrowserWindow*>(self);
     Tab* t = bw->current_tab();
@@ -725,6 +1202,100 @@ void BrowserWindow::on_menu_clicked(GtkWidget* btn, gpointer self) {
     add_item("🏠 Home",       "bastion://home");
     add_item("⭐ Bookmarks",  "bastion://bookmarks");
     add_item("⬇ Downloads",   "bastion://downloads");
+    gtk_menu_shell_append(GTK_MENU_SHELL(menu), gtk_separator_menu_item_new());
+
+    // Actions for current page
+    auto add_action = [&](const char* label, void(*fn)(BrowserWindow*)) {
+        GtkWidget* item = gtk_menu_item_new_with_label(label);
+        g_object_set_data(G_OBJECT(item), "fn", reinterpret_cast<gpointer>(fn));
+        g_signal_connect(item, "activate",
+            G_CALLBACK(+[](GtkMenuItem* mi, gpointer d){
+                auto* bw2 = static_cast<BrowserWindow*>(d);
+                auto fn2 = reinterpret_cast<void(*)(BrowserWindow*)>(
+                    g_object_get_data(G_OBJECT(mi), "fn"));
+                if (fn2) fn2(bw2);
+            }), bw);
+        gtk_menu_shell_append(GTK_MENU_SHELL(menu), item);
+    };
+
+    add_action("📖 Reader mode",
+        [](BrowserWindow* b){ Tab* t = b->current_tab(); if (t) b->toggle_reader_mode(t->webview); });
+    add_action("🛡 Fortress mode",
+        [](BrowserWindow* b){ b->toggle_fortress(); });
+    add_action("🎬 Picture-in-picture",
+        [](BrowserWindow* b){ Tab* t = b->current_tab(); if (t) b->request_pip(t->webview); });
+    add_action("👁 View page source (Ctrl+U)",
+        [](BrowserWindow* b){ b->view_source(); });
+    add_action("🔧 Inspect element (Ctrl+Shift+I)",
+        [](BrowserWindow* b){ b->open_inspector(); });
+
+    // Per-site toggles submenu
+    Tab* cur = bw->current_tab();
+    if (cur) {
+        const gchar* u = webkit_web_view_get_uri(cur->webview);
+        std::string host = u ? AppState::host_of(u) : "";
+        if (!host.empty()) {
+            gtk_menu_shell_append(GTK_MENU_SHELL(menu), gtk_separator_menu_item_new());
+
+            SiteSettings ss = bw->state_->get_site(host);
+            auto toggle_label = [&](const char* base, bool on){
+                std::string s = (on ? std::string("✓ ") : std::string("  ")) + base;
+                return s + " for " + host;
+            };
+
+            // Block JS toggle
+            GtkWidget* js_item = gtk_menu_item_new_with_label(
+                toggle_label("Block JavaScript", ss.js_disabled).c_str());
+            g_signal_connect(js_item, "activate",
+                G_CALLBACK(+[](GtkMenuItem*, gpointer d){
+                    auto* b = static_cast<BrowserWindow*>(d);
+                    Tab* t = b->current_tab(); if (!t) return;
+                    const gchar* uu = webkit_web_view_get_uri(t->webview);
+                    std::string h = uu ? AppState::host_of(uu) : "";
+                    if (h.empty()) return;
+                    SiteSettings s2 = b->state_->get_site(h);
+                    s2.js_disabled = !s2.js_disabled;
+                    b->state_->set_site(h, s2);
+                    webkit_web_view_reload(t->webview);
+                }), bw);
+            gtk_menu_shell_append(GTK_MENU_SHELL(menu), js_item);
+
+            // Force dark toggle
+            GtkWidget* dark_item = gtk_menu_item_new_with_label(
+                toggle_label("Force dark mode", ss.force_dark).c_str());
+            g_signal_connect(dark_item, "activate",
+                G_CALLBACK(+[](GtkMenuItem*, gpointer d){
+                    auto* b = static_cast<BrowserWindow*>(d);
+                    Tab* t = b->current_tab(); if (!t) return;
+                    const gchar* uu = webkit_web_view_get_uri(t->webview);
+                    std::string h = uu ? AppState::host_of(uu) : "";
+                    if (h.empty()) return;
+                    SiteSettings s2 = b->state_->get_site(h);
+                    s2.force_dark = !s2.force_dark;
+                    b->state_->set_site(h, s2);
+                    webkit_web_view_reload(t->webview);
+                }), bw);
+            gtk_menu_shell_append(GTK_MENU_SHELL(menu), dark_item);
+
+            // Block images toggle
+            GtkWidget* img_item = gtk_menu_item_new_with_label(
+                toggle_label("Block images", ss.block_images).c_str());
+            g_signal_connect(img_item, "activate",
+                G_CALLBACK(+[](GtkMenuItem*, gpointer d){
+                    auto* b = static_cast<BrowserWindow*>(d);
+                    Tab* t = b->current_tab(); if (!t) return;
+                    const gchar* uu = webkit_web_view_get_uri(t->webview);
+                    std::string h = uu ? AppState::host_of(uu) : "";
+                    if (h.empty()) return;
+                    SiteSettings s2 = b->state_->get_site(h);
+                    s2.block_images = !s2.block_images;
+                    b->state_->set_site(h, s2);
+                    webkit_web_view_reload(t->webview);
+                }), bw);
+            gtk_menu_shell_append(GTK_MENU_SHELL(menu), img_item);
+        }
+    }
+
     gtk_menu_shell_append(GTK_MENU_SHELL(menu), gtk_separator_menu_item_new());
     add_item("⚙ Settings",    "bastion://settings");
 
@@ -782,6 +1353,11 @@ void BrowserWindow::on_load_changed(WebKitWebView* wv, WebKitLoadEvent event, gp
             bw->update_address_bar(uri ? uri : "");
             bw->update_tls_status(wv);
             bw->update_bookmark_button();
+        }
+        // Apply per-site settings
+        {
+            const gchar* uri = webkit_web_view_get_uri(wv);
+            if (uri) bw->apply_site_settings(wv, uri);
         }
         break;
     case WEBKIT_LOAD_FINISHED:
@@ -927,6 +1503,19 @@ gboolean BrowserWindow::on_key_press(GtkWidget*, GdkEventKey* ev, gpointer self)
             case GDK_KEY_plus: case GDK_KEY_equal: bw->zoom_in();    return TRUE;
             case GDK_KEY_minus:                   bw->zoom_out();   return TRUE;
             case GDK_KEY_0:                       bw->zoom_reset(); return TRUE;
+            case GDK_KEY_u: bw->view_source(); return TRUE;
+        }
+    }
+
+    if (mods == (GDK_CONTROL_MASK | GDK_SHIFT_MASK)) {
+        switch (key) {
+            case GDK_KEY_F: case GDK_KEY_f: bw->toggle_fortress();  return TRUE;
+            case GDK_KEY_I: case GDK_KEY_i: bw->open_inspector();   return TRUE;
+            case GDK_KEY_R: case GDK_KEY_r: {
+                Tab* t = bw->current_tab();
+                if (t) bw->toggle_reader_mode(t->webview);
+                return TRUE;
+            }
         }
     }
 
@@ -938,4 +1527,88 @@ gboolean BrowserWindow::on_key_press(GtkWidget*, GdkEventKey* ev, gpointer self)
     if (mods == 0 && key == GDK_KEY_F5) { on_reload_clicked(nullptr, bw); return TRUE; }
 
     return FALSE;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  Page context menu — customize WebKit's right-click menu
+// ─────────────────────────────────────────────────────────────────────────────
+gboolean BrowserWindow::on_context_menu(WebKitWebView* /*wv*/, WebKitContextMenu* menu,
+                                         GdkEvent* /*event*/,
+                                         WebKitHitTestResult* /*hit*/,
+                                         gpointer self)
+{
+    auto* bw = static_cast<BrowserWindow*>(self);
+
+    // Append our custom items at the end.
+    // WebKit already provides: Open Link (New Window / Tab), Copy Link, Download,
+    // Copy Image, Save Image, Copy Selection, Inspect Element (if dev extras on).
+
+    webkit_context_menu_append(menu, webkit_context_menu_item_new_separator());
+
+    // "View Page Source"
+    {
+        GSimpleAction* act = g_simple_action_new("bastion.viewsource", nullptr);
+        g_signal_connect(act, "activate",
+            G_CALLBACK(+[](GSimpleAction*, GVariant*, gpointer d){
+                static_cast<BrowserWindow*>(d)->view_source();
+            }), bw);
+        WebKitContextMenuItem* item = webkit_context_menu_item_new_from_gaction(
+            G_ACTION(act), "View page source", nullptr);
+        webkit_context_menu_append(menu, item);
+        g_object_unref(act);
+    }
+
+    // "Reader Mode"
+    {
+        GSimpleAction* act = g_simple_action_new("bastion.reader", nullptr);
+        g_signal_connect(act, "activate",
+            G_CALLBACK(+[](GSimpleAction*, GVariant*, gpointer d){
+                auto* b = static_cast<BrowserWindow*>(d);
+                Tab* t = b->current_tab();
+                if (t) b->toggle_reader_mode(t->webview);
+            }), bw);
+        WebKitContextMenuItem* item = webkit_context_menu_item_new_from_gaction(
+            G_ACTION(act), "Toggle reader mode", nullptr);
+        webkit_context_menu_append(menu, item);
+        g_object_unref(act);
+    }
+
+    // "Picture in Picture" (only if there's likely video, but always offer)
+    {
+        GSimpleAction* act = g_simple_action_new("bastion.pip", nullptr);
+        g_signal_connect(act, "activate",
+            G_CALLBACK(+[](GSimpleAction*, GVariant*, gpointer d){
+                auto* b = static_cast<BrowserWindow*>(d);
+                Tab* t = b->current_tab();
+                if (t) b->request_pip(t->webview);
+            }), bw);
+        WebKitContextMenuItem* item = webkit_context_menu_item_new_from_gaction(
+            G_ACTION(act), "Picture-in-picture (video)", nullptr);
+        webkit_context_menu_append(menu, item);
+        g_object_unref(act);
+    }
+
+    // "Inspect Element"
+    {
+        GSimpleAction* act = g_simple_action_new("bastion.inspect", nullptr);
+        g_signal_connect(act, "activate",
+            G_CALLBACK(+[](GSimpleAction*, GVariant*, gpointer d){
+                static_cast<BrowserWindow*>(d)->open_inspector();
+            }), bw);
+        WebKitContextMenuItem* item = webkit_context_menu_item_new_from_gaction(
+            G_ACTION(act), "Inspect element", nullptr);
+        webkit_context_menu_append(menu, item);
+        g_object_unref(act);
+    }
+
+    return FALSE;  // FALSE = show the menu (TRUE would suppress)
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  Window delete — save session on clean exit
+// ─────────────────────────────────────────────────────────────────────────────
+gboolean BrowserWindow::on_window_delete(GtkWidget*, GdkEvent*, gpointer self) {
+    auto* bw = static_cast<BrowserWindow*>(self);
+    bw->save_session();
+    return FALSE;  // FALSE = continue with default (destroy window)
 }
