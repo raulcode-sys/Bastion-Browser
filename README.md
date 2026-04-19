@@ -162,3 +162,5 @@ Images of how it looks + logo:
 <img width="1286" height="928" alt="Screenshot_2026-04-18_12-07-24" src="https://github.com/user-attachments/assets/8068a473-ea49-4399-8785-5a71990ac6f4" />
 <img width="1287" height="929" alt="Screenshot_2026-04-18_12-10-21" src="https://github.com/user-attachments/assets/4e4d544d-ccf6-4b2e-b05f-087e1b43defe" />
 <img width="1276" height="925" alt="Screenshot_2026-04-18_12-08-03" src="https://github.com/user-attachments/assets/b13861d4-1f5f-414f-8dff-a9e1de49476c" />
+
+also yeah it was inspired by minecraft
