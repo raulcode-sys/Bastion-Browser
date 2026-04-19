@@ -149,8 +149,11 @@ If the build fails, paste the full error somewhere and I'll probably tell you wh
 
 Do whatever you want with it.
 
-
 Only works on Linux
+
+The only thing with this one is, it's not universal like Raiser Browser, Raiser works on macOS, Windows and Linux, so theres no debate in which ones better, but Bastion offers true security and privacy, because let's be honest, Linux is more advanced in privacy and security, so you can be truly anonymous on the internet.
+
+Images of how it looks + logo:
 
 <img width="1024" height="1024" alt="2026_04_17_10n_Kleki" src="https://github.com/user-attachments/assets/4e9e64d5-f969-4c30-a5fe-de8aa2c124d1" />
 <img width="1286" height="925" alt="Screenshot_2026-04-18_12-09-41" src="https://github.com/user-attachments/assets/c4c28fc4-c512-4e6d-be75-0125edcab8c7" />
