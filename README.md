@@ -1,3 +1,7 @@
+
+
+
+
 # Bastion Browser
 
 A private, ephemeral web browser for Linux. No history, no disk writes, Tor by default.
