@@ -26,8 +26,8 @@ Built on WebKitGTK because writing a browser engine from scratch is insane and I
 ### Arch / CachyOS / Manjaro / EndeavourOS
 
 ```bash
-unzip bastion-browser.zip
-cd bastion-browser
+unzip bastion-browser-main.zip
+cd bastion-browser-main
 chmod +x installarch.sh
 ./installarch.sh
 ```
@@ -35,8 +35,8 @@ chmod +x installarch.sh
 ### Debian / Ubuntu / Mint / Pop!_OS
 
 ```bash
-unzip bastion-browser.zip
-cd bastion-browser
+unzip bastion-browser-main.zip
+cd bastion-browser-main
 chmod +x installdeb.sh
 ./installdeb.sh
 ```
