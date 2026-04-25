@@ -26,8 +26,8 @@ Built on WebKitGTK because writing a browser engine from scratch is insane and I
 ### Arch / CachyOS / Manjaro / EndeavourOS
 
 ```bash
-unzip bastion-browser-main.zip
-cd bastion-browser-main
+unzip bastion-browser.zip
+cd bastion-browser
 chmod +x installarch.sh
 ./installarch.sh
 ```
@@ -35,21 +35,10 @@ chmod +x installarch.sh
 ### Debian / Ubuntu / Mint / Pop!_OS
 
 ```bash
-unzip bastion-browser-main.zip
-cd bastion-browser-main
+unzip bastion-browser.zip
+cd bastion-browser
 chmod +x installdeb.sh
 ./installdeb.sh
-```
-
-
-### OpenBSD
-
-```bash
-doas pkg_add -I unzip
-unzip bastion-browser-main.zip
-cd bastion-browser-main
-chmod +x installopenbsd.sh
-doas ./installopenbsd.sh
 ```
 
 The install script installs build deps, sets up Tor and dnscrypt-proxy, applies some kernel sysctl hardening, compiles the browser, and drops the binary in `/usr/local/bin/bastion`. You'll get prompted for sudo once.
@@ -159,20 +148,3 @@ If the build fails, paste the full error somewhere and I'll probably tell you wh
 ## License
 
 Do whatever you want with it.
-
-Only works on Linux
-
-The only thing with this one is, it's not universal like Raiser Browser, Raiser works on macOS, Windows and Linux, so theres no debate in which ones better, but Bastion offers true security and privacy, because let's be honest, Linux is more advanced in privacy and security, so you can be truly anonymous on the internet.
-
-Images of how it looks + logo:
-
-<img width="1024" height="1024" alt="2026_04_17_10n_Kleki" src="https://github.com/user-attachments/assets/4e9e64d5-f969-4c30-a5fe-de8aa2c124d1" />
-<img width="1291" height="918" alt="ss5" src="https://github.com/user-attachments/assets/ee6c0de4-ddc8-4dfb-905c-e1164f2c79ef" />
-<img width="1288" height="934" alt="ss1" src="https://github.com/user-attachments/assets/004165c0-40b8-4cae-ad4f-2c258906f552" />
-<img width="1287" height="938" alt="ss4" src="https://github.com/user-attachments/assets/a0257888-abe8-43e8-bbec-8ccf98c46cc3" />
-<img width="1292" height="931" alt="ss3" src="https://github.com/user-attachments/assets/bbd1a36d-9f8e-42a6-8c08-d46a4df34b7f" />
-<img width="1274" height="931" alt="ss2" src="https://github.com/user-attachments/assets/33af7ff8-9a95-46e1-b9a1-63101e1365ac" />
-
-
-
-also yeah it was inspired by minecraft
