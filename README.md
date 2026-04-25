@@ -49,7 +49,7 @@ doas pkg_add -I unzip
 unzip bastion-browser-main.zip
 cd bastion-browser-main
 chmod +x installopenbsd.sh
-./installopenbsd.sh
+doas ./installopenbsd.sh
 ```
 
 The install script installs build deps, sets up Tor and dnscrypt-proxy, applies some kernel sysctl hardening, compiles the browser, and drops the binary in `/usr/local/bin/bastion`. You'll get prompted for sudo once.
