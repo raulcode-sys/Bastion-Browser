@@ -2,6 +2,7 @@
 
 
 
+
 # Bastion Browser
 
 A private, ephemeral web browser for Linux. No history, no disk writes, Tor by default.
@@ -152,3 +153,9 @@ If the build fails, paste the full error somewhere and I'll probably tell you wh
 ## License
 
 Do whatever you want with it.
+<img width="1024" height="1024" alt="580304135-4e9e64d5-f969-4c30-a5fe-de8aa2c124d1" src="https://github.com/user-attachments/assets/8dd52e85-3e1c-4d2a-98d4-d6cc542d4bff" />
+<img width="1287" height="938" alt="580447258-a0257888-abe8-43e8-bbec-8ccf98c46cc3" src="https://github.com/user-attachments/assets/9952051c-4e0d-46d6-9381-a4952cdae0ec" />
+<img width="1288" height="934" alt="580447160-004165c0-40b8-4cae-ad4f-2c258906f552" src="https://github.com/user-attachments/assets/40eb472d-b8d0-4733-80c6-b1ef1be502e7" />
+<img width="1291" height="918" alt="580447130-ee6c0de4-ddc8-4dfb-905c-e1164f2c79ef" src="https://github.com/user-attachments/assets/e122ac08-79d8-453e-b999-2ea322e34469" />
+<img width="1292" height="931" alt="580447248-bbd1a36d-9f8e-42a6-8c08-d46a4df34b7f" src="https://github.com/user-attachments/assets/96b7ce28-1689-4071-be8a-fa667f9c690a" />
+<img width="1274" height="931" alt="580447240-33af7ff8-9a95-46e1-b9a1-63101e1365ac" src="https://github.com/user-attachments/assets/e86354d8-766c-4688-bd4a-62472cdbd8a1" />
